@@ -4,20 +4,23 @@ import socket
 import threading
 from utils import receive_message, serialize, deserialize, get_server_port, READ_REQUEST, READ_RESPONSE, COMMIT_REQUEST, COMMIT_RESPONSE, BROADCAST_MESSAGE
 from broadcast import Broadcast
-
+from paxos import PaxosNode
 
 class Server:
-    """Data Managing Server with replication."""
     def __init__(self, server_id, replicas):
         self.server_id = server_id
         self.host = 'localhost'
-        self.port = get_server_port(server_id)
-        self.data_store = {}  # key: (value, version)
+        self.port = replicas[server_id][1]
+        self.replicas = replicas
+        self.data_store = {}
         self.lock = threading.Lock()
-        self.broadcast = Broadcast(replicas=replicas)
+        self.paxos = PaxosNode(server_id, replicas)  # Initialize PaxosNode
 
     def start(self):
-        """Start the server."""
+        """Start the server and Paxos."""
+        threading.Thread(target=self.paxos.start, daemon=True).start()
+        print(f"Server {self.server_id} started Paxos.")
+
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind((self.host, self.port))
         server_socket.listen()

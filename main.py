@@ -4,6 +4,7 @@ from server import Server
 from client import Transaction
 from broadcast import Sequencer, Broadcast
 from utils import SERVER_HOST, SERVER_BASE_PORT, CLIENT_HOST, CLIENT_BASE_PORT
+from paxos import PaxosNode
 
 # List to keep server instances globally for inspection
 server_instances = []
@@ -43,7 +44,27 @@ def display_server_data_stores():
         if not data_store:
             print(f"Server {server.server_id} data store is empty. Possible issue with commit or broadcast.")
 
-def main():
+def test_paxos():
+    num_nodes = 3
+    replicas = [('localhost', 10001 + i) for i in range(num_nodes)]
+
+    # Start Paxos nodes
+    nodes = []
+    for i in range(num_nodes):
+        node = PaxosNode(i, replicas)
+        threading.Thread(target=node.start, daemon=True).start()
+        nodes.append(node)
+
+    time.sleep(1)  # Allow nodes to start
+
+    # Propose a value
+    nodes[0].propose('Transaction Commit A')  # Node 0 proposes a value
+
+    time.sleep(5)  # Allow Paxos to reach consensus
+    print("F")
+
+
+def main2():
     """Main function to start sequencer, servers, and clients."""
     num_servers = 3
     num_clients = 2
@@ -83,6 +104,7 @@ def main():
     # Display the state of the servers' data stores
     display_server_data_stores()
 
-if __name__ == '__main__':
-    main()
+
+if __name__ == "__main__":
+    test_paxos()
 
