@@ -8,16 +8,18 @@ from utils import SERVER_HOST, SERVER_BASE_PORT, CLIENT_HOST, CLIENT_BASE_PORT
 # List to keep server instances globally for inspection
 server_instances = []
 
+
 def start_sequencer():
     """Start the sequencer in a separate thread."""
     sequencer = Sequencer()
     threading.Thread(target=sequencer.start, daemon=True).start()
     print("Sequencer started.")
 
+
 def start_servers(num_servers):
     """Start multiple server instances."""
     global server_instances
-    replicas = [('localhost', SERVER_BASE_PORT + i) for i in range(num_servers)]
+    replicas = [("localhost", SERVER_BASE_PORT + i) for i in range(num_servers)]
     servers = []
     for i in range(num_servers):
         server = Server(server_id=i, replicas=replicas)
@@ -27,11 +29,15 @@ def start_servers(num_servers):
     server_instances = servers  # Store server instances globally
     return replicas
 
+
 def start_clients(client_id, operations, broadcast, servers):
     """Start a client and execute a transaction."""
-    transaction = Transaction(client_id=client_id, operations=operations, broadcast=broadcast, servers=servers)
+    transaction = Transaction(
+        client_id=client_id, operations=operations, broadcast=broadcast, servers=servers
+    )
     print(f"Client {client_id} started transaction with operations: {operations}")
     transaction.execute()
+
 
 def display_server_data_stores():
     """Display the data stores of all servers."""
@@ -41,7 +47,10 @@ def display_server_data_stores():
         data_store = server.get_data_store()
         print(f"Server {server.server_id}: {data_store}")
         if not data_store:
-            print(f"Server {server.server_id} data store is empty. Possible issue with commit or broadcast.")
+            print(
+                f"Server {server.server_id} data store is empty. Possible issue with commit or broadcast."
+            )
+
 
 def main():
     """Main function to start sequencer, servers, and clients."""
@@ -61,15 +70,19 @@ def main():
 
     # Define client operations
     client_operations = [
-        [{'type': 'READ', 'item': 'x'}, {'type': 'WRITE', 'item': 'x', 'value': 'A'}],
-        [{'type': 'READ', 'item': 'x'}, {'type': 'WRITE', 'item': 'x', 'value': 'B'}]
+        [{"type": "READ", "item": "x"}, {"type": "WRITE", "item": "x", "value": "A"}],
+        [{"type": "READ", "item": "x"}, {"type": "WRITE", "item": "x", "value": "B"}],
     ]
 
     # Start clients
     threads = []
     for client_id in range(num_clients):
         operations = client_operations[client_id]
-        client_thread = threading.Thread(target=start_clients, args=(client_id, operations, broadcast, replicas), daemon=True)
+        client_thread = threading.Thread(
+            target=start_clients,
+            args=(client_id, operations, broadcast, replicas),
+            daemon=True,
+        )
         client_thread.start()
         threads.append(client_thread)
 
@@ -83,6 +96,6 @@ def main():
     # Display the state of the servers' data stores
     display_server_data_stores()
 
-if __name__ == '__main__':
-    main()
 
+if __name__ == "__main__":
+    main()
