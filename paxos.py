@@ -114,16 +114,18 @@ class PaxosLearner(PaxosNode):
         if message["type"] == "accepted":
             proposal_id = message["proposal_id"]
             value = message["value"]
+
+            # Track accepted messages for the proposal
             self.accept_counts.setdefault(proposal_id, []).append(value)
 
             # Check for majority
             if len(self.accept_counts[proposal_id]) >= self.majority:
-                # Once majority is reached, store the value as learned
-                self.learned_values[proposal_id] = value
-                print(
-                    f"[Learner {self.id}] Consensus reached for proposal ID {proposal_id} with value: {value}"
-                )
-                self.notify_consensus(value)
+                consensus_value = self.accept_counts[proposal_id][0]
+                if all(v == consensus_value for v in self.accept_counts[proposal_id]):
+                    self.learned_values[proposal_id] = consensus_value
+                    print(
+                        f"[Learner {self.id}] Consensus reached for proposal ID {proposal_id} with value: {consensus_value}"
+                    )
 
     def notify_consensus(self, value):
         """Notify the server about the consensus value."""

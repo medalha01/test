@@ -21,6 +21,9 @@ from broadcast import Broadcast
 from paxos import PaxosProposer, PaxosAccepter, PaxosLearner
 
 
+from queue import PriorityQueue
+
+
 class Server:
     def __init__(self, server_id, replicas):
         self.server_id = server_id
@@ -32,18 +35,65 @@ class Server:
             replicas=[(self.host, get_server_port(r)) for r in replicas]
         )
 
-        # Assign unique Paxos ports
+        # Sequencer processing queue
+        self.sequence_queue = PriorityQueue()
+        self.current_sequence = 0
+
+        # Initialize Paxos components (Proposer, Acceptor, Learner)
         proposer_port = get_paxos_port(server_id)
         accepter_port = proposer_port + 1
         learner_port = proposer_port + 2
 
-        # Initialize Paxos roles with peers excluding the current server
         self.peers = [
             (self.host, get_paxos_port(r)) for r in replicas if r != server_id
         ]
         self.proposer = PaxosProposer(server_id, self.host, proposer_port, self.peers)
         self.accepter = PaxosAccepter(server_id, self.host, accepter_port)
         self.learner = PaxosLearner(server_id, self.host, learner_port)
+
+    def handle_commit_request(self, message):
+        """Handle commit requests and add them to the processing queue."""
+        transaction = message["transaction"]
+        sequence_number = message["sequence_number"]
+        write_set = transaction["write_set"]
+        transaction_id = transaction["id"]
+
+        # Add to sequence queue for ordered processing
+        self.sequence_queue.put((sequence_number, transaction_id, write_set))
+
+        # Start a thread to process the queue
+        threading.Thread(target=self.process_sequence_queue, daemon=True).start()
+
+    def process_sequence_queue(self):
+        """Process transactions from the sequence queue in order."""
+        while not self.sequence_queue.empty():
+            sequence_number, transaction_id, write_set = self.sequence_queue.get()
+
+            # Ensure sequential order
+            if sequence_number != self.current_sequence + 1:
+                self.sequence_queue.put((sequence_number, transaction_id, write_set))
+                return  # Wait for the correct sequence
+
+            self.current_sequence = sequence_number
+
+            # Start Paxos consensus
+            print(
+                f"Server {self.server_id} initiating Paxos for transaction {transaction_id}."
+            )
+            proposed_value = {"transaction_id": transaction_id, "write_set": write_set}
+            self.proposer.propose(proposed_value)
+
+            # Wait for consensus
+            if self.wait_for_consensus(transaction_id):
+                consensus_value = self.learner.learned_values.get(transaction_id)
+                if consensus_value and consensus_value["write_set"] == write_set:
+                    self.apply_commit(transaction_id, write_set)
+                else:
+                    print(
+                        f"Server {self.server_id} aborting transaction {transaction_id} due to conflicting consensus."
+                    )
+            else:
+                print(f"Server {self.server_id} aborting transaction {transaction_id}.")
 
     def start(self):
         """Start the server."""
@@ -120,32 +170,15 @@ class Server:
         with self.lock:
             return dict(self.data_store)
 
-    def handle_commit_request(self, message):
-        transaction = message["transaction"]
-        transaction_id = transaction["id"]
-        ws = transaction["write_set"]
+    def validate_sequence(self, sequence_number):
+        """Validate and track sequence numbers for ordered execution."""
+        if not hasattr(self, "last_sequence_number"):
+            self.last_sequence_number = 0
 
-        proposed_value = {"transaction_id": transaction_id, "write_set": ws}
-
-        # Start Paxos consensus
-        print(
-            f"Server {self.server_id} initiating Paxos for transaction {transaction_id}."
-        )
-        self.proposer.propose(proposed_value)
-
-        # Wait for consensus
-        if self.wait_for_consensus(transaction_id):
-            with self.lock:
-                # Check if another transaction overwrote the same item
-                consensus_value = self.learner.learned_values[transaction_id]
-                if ws != consensus_value["write_set"]:
-                    print(
-                        f"Server {self.server_id} aborting transaction {transaction_id} due to conflict."
-                    )
-                    return
-            self.apply_commit(transaction_id, ws)
-        else:
-            print(f"Server {self.server_id} aborting transaction {transaction_id}.")
+        if sequence_number == self.last_sequence_number + 1:
+            self.last_sequence_number = sequence_number
+            return True
+        return False
 
     def wait_for_consensus(self, transaction_id):
         """Wait for consensus from the learner."""
