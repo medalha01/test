@@ -3,13 +3,14 @@ import json
 
 # Configuration Parameters
 SEQUENCER_HOST = "localhost"
-SEQUENCER_PORT = 10000
+SEQUENCER_PORT = 15000
 
 SERVER_HOST = "localhost"
-SERVER_BASE_PORT = 10001  # Servers will listen on SERVER_BASE_PORT + server_id
+SERVER_BASE_PORT = 13300  # Servers will listen on SERVER_BASE_PORT + server_id
 
 CLIENT_HOST = "localhost"
 CLIENT_BASE_PORT = 11000  # Clients will use ports starting from CLIENT_BASE_PORT
+PAXOS_BASE_PORT = 12000  # Base port for Paaxos nodes
 
 # Message Types
 READ_REQUEST = "READ_REQUEST"
@@ -58,3 +59,11 @@ def receive_message(conn):
     if not data:
         return None
     return deserialize(data.decode())
+
+
+# utils.py
+
+
+def get_paxos_port(server_id):
+    """Get the Paxos base port for a given server ID."""
+    return PAXOS_BASE_PORT + (server_id * 10)  # Offset to avoid overlap

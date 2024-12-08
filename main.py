@@ -3,7 +3,13 @@ import time
 from server import Server
 from client import Transaction
 from broadcast import Sequencer, Broadcast
-from utils import SERVER_HOST, SERVER_BASE_PORT, CLIENT_HOST, CLIENT_BASE_PORT
+from utils import (
+    SERVER_HOST,
+    SERVER_BASE_PORT,
+    get_server_port,
+    CLIENT_HOST,
+    CLIENT_BASE_PORT,
+)
 
 # List to keep server instances globally for inspection
 server_instances = []
@@ -16,18 +22,22 @@ def start_sequencer():
     print("Sequencer started.")
 
 
+# Add each server to the global `server_instances` list
+server_instances = []
+
+
+# main.py
+
+
 def start_servers(num_servers):
-    """Start multiple server instances."""
-    global server_instances
-    replicas = [("localhost", SERVER_BASE_PORT + i) for i in range(num_servers)]
-    servers = []
+    replicas = list(range(num_servers))  # List of server IDs
     for i in range(num_servers):
         server = Server(server_id=i, replicas=replicas)
+        server_instances.append(server)  # Store server instance for inspection
         threading.Thread(target=server.start, daemon=True).start()
-        servers.append(server)
-        print(f"Server {i} started on {server.host}:{server.port}")
-    server_instances = servers  # Store server instances globally
-    return replicas
+    return [
+        (SERVER_HOST, get_server_port(i)) for i in replicas
+    ]  # Return (host, port) tuples
 
 
 def start_clients(client_id, operations, broadcast, servers):

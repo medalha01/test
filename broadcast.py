@@ -90,7 +90,7 @@ class Broadcast:
 
     def send_to_replica(self, replica, message):
         """Send a message to a replica."""
-        host, port = replica
+        host, port = replica  # Ensure replica is a tuple
         max_retries = 3
         for attempt in range(max_retries):
             try:
