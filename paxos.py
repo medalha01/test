@@ -57,13 +57,13 @@ class PaxosProposer(PaxosNode):
             print(
                 f"[Proposer {self.id}] Received promise {self.promises_received}/{len(self.peers)}"
             )
-            if self.promises_received > len(self.peers) // 2:
+            if self.promises_received >= len(self.peers) // 2 + 1:
                 accept_message = {
-                    "type": "accepted",
+                    "type": "accept_request",
                     "proposal_id": message["proposal_id"],
                     "value": self.proposed_value,
                 }
-                print(f"[Proposer {self.id}] Sending accepted message to peers.")
+                print(f"[Proposer {self.id}] Sending accept request to peers.")
                 for peer in self.peers:
                     self.send_message(accept_message, peer)
 
@@ -103,13 +103,34 @@ class PaxosLearner(PaxosNode):
     def __init__(self, id, ip, port):
         super().__init__(id, ip, port)
         self.learned_values = {}
+        self.accept_counts = {}  # Track counts of accepted messages for proposal IDs
+        self.majority = 0  # Set dynamically based on the number of peers
+
+    def set_majority(self, total_peers):
+        """Set the majority required based on the total number of peers."""
+        self.majority = total_peers // 2 + 1
 
     def on_receive_message(self, message, addr):
         if message["type"] == "accepted":
             proposal_id = message["proposal_id"]
             value = message["value"]
-            if proposal_id not in self.learned_values:
+            self.accept_counts.setdefault(proposal_id, []).append(value)
+
+            # Check for majority
+            if len(self.accept_counts[proposal_id]) >= self.majority:
+                # Once majority is reached, store the value as learned
                 self.learned_values[proposal_id] = value
                 print(
-                    f"[Learner {self.id}] Learned value: {value} for proposal ID: {proposal_id}"
+                    f"[Learner {self.id}] Consensus reached for proposal ID {proposal_id} with value: {value}"
                 )
+                self.notify_consensus(value)
+
+    def notify_consensus(self, value):
+        """Notify the server about the consensus value."""
+        transaction_id = value["transaction_id"]
+        print(
+            f"[Learner {self.id}] Consensus achieved for transaction {transaction_id}: {value}"
+        )
+        # Notify the associated server (callback or integration required)
+
+        self.learned_values[transaction_id] = value

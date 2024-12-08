@@ -95,18 +95,6 @@ class Server:
             f"Server {self.server_id} handled READ_REQUEST for item '{item}': value={value}, version={version}"
         )
 
-    def handle_commit_request(self, message):
-        """Handle commit requests and start Paxos consensus."""
-        transaction = message["transaction"]
-        ws = transaction["write_set"]
-        proposed_value = {"transaction_id": transaction["id"], "write_set": ws}
-
-        # Start Paxos consensus to replicate the write operation
-        print(
-            f"Server {self.server_id} initiating Paxos for transaction {transaction['id']}."
-        )
-        self.proposer.propose(proposed_value)
-
     def handle_broadcast_message(self, message):
         """Handle broadcast messages."""
         msg = message.get("message")
@@ -127,6 +115,52 @@ class Server:
                 f"Server {self.server_id} received unknown message type: {msg['type']}"
             )
 
+    def get_data_store(self):
+        """Return the current state of the data store."""
+        with self.lock:
+            return dict(self.data_store)
+
+    def handle_commit_request(self, message):
+        transaction = message["transaction"]
+        transaction_id = transaction["id"]
+        ws = transaction["write_set"]
+
+        proposed_value = {"transaction_id": transaction_id, "write_set": ws}
+
+        # Start Paxos consensus
+        print(
+            f"Server {self.server_id} initiating Paxos for transaction {transaction_id}."
+        )
+        self.proposer.propose(proposed_value)
+
+        # Wait for consensus
+        if self.wait_for_consensus(transaction_id):
+            with self.lock:
+                # Check if another transaction overwrote the same item
+                consensus_value = self.learner.learned_values[transaction_id]
+                if ws != consensus_value["write_set"]:
+                    print(
+                        f"Server {self.server_id} aborting transaction {transaction_id} due to conflict."
+                    )
+                    return
+            self.apply_commit(transaction_id, ws)
+        else:
+            print(f"Server {self.server_id} aborting transaction {transaction_id}.")
+
+    def wait_for_consensus(self, transaction_id):
+        """Wait for consensus from the learner."""
+        import time
+
+        timeout = 10  # Maximum wait time in seconds
+        elapsed = 0
+        while elapsed < timeout:
+            with self.lock:
+                if transaction_id in self.learner.learned_values:
+                    return True  # Consensus achieved
+            time.sleep(1)
+            elapsed += 1
+        return False  # Consensus not achieved
+
     def apply_commit(self, transaction_id, write_set):
         """Apply the write set after consensus."""
         print(
@@ -138,10 +172,3 @@ class Server:
                 _, current_version = self.data_store.get(item, (None, 0))
                 self.data_store[item] = (value, current_version + 1)
             print(f"Server {self.server_id} updated data store: {self.data_store}")
-
-    def get_data_store(self):
-        """Return the current state of the data store."""
-        with self.lock:
-            return dict(
-                self.data_store
-            )  # Return a copy of the data store to avoid race conditions
